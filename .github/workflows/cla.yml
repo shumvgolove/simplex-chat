@@ -22,10 +22,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # the below token should have repo scope and must be manually added by you in the repository's secret
+          PERSONAL_ACCESS_TOKEN : ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         with:
           path-to-signatures: 'signatures/v1.1/cla.json'
           path-to-document: 'https://github.com/simplex-chat/cla/blob/master/CLA.md'
           # branch should not be protected
+          remote-organization-name: shumvgolove
+          remote-repository-name: cla
           branch: 'master'
           # allowlist: user1,bot*
 
