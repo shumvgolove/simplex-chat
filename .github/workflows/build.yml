@@ -7,7 +7,30 @@ on:
       - "!*-fdroid"
       - "!*-armv7a"
 
+# This workflow uses custom actions (prepare-build and prepare-release) defined in:
+# 
+# .github/actions/
+# ├── prepare-build
+# │   └── action.yml
+# └── prepare-release
+#     └── action.yml
+
+# Important!
+# Do not use always(), it makes build unskippable.
+# See: https://github.com/actions/runner/issues/1846#issuecomment-1246102753
+
 jobs:
+
+# =============================
+#       Global variables
+# =============================
+
+# That is the only and less hacky way to setup global variables
+# to use in strategy matrix (env:/YAML anchors doesn't work).
+# See: https://github.com/orgs/community/discussions/56787#discussioncomment-6041789
+#      https://github.com/actions/runner/issues/1182
+#      https://stackoverflow.com/a/77549656
+
   variables:
     runs-on: ubuntu-latest
     outputs:
@@ -17,6 +40,13 @@ jobs:
       - name: Dummy job when we have just simple variables
         if: false
         run: echo
+
+# =============================
+#       Create release
+# =============================
+
+# Create release, but only if it's triggered by tag push.
+# On pull requests/commits push, this job will always complete.
 
   maybe-release:
     runs-on: ubuntu-latest
@@ -49,6 +79,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+# =========================
+#        Linux Build
+# =========================
+
   build-linux:
     name: "ubuntu-${{ matrix.os }} (CLI,Desktop), GHC: ${{ matrix.ghc }}"
     needs: [maybe-release, variables]
@@ -71,8 +105,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # Otherwise we run out of disk space with Docker build
       - name: Free disk space
-        run: curl -fsSL https://raw.githubusercontent.com/kou/arrow/e49d8ae15583ceff03237571569099a6ad62be32/ci/scripts/util_free_space.sh | bash
+        shell: bash
+        run: ./scripts/ci/linux_util_free_space.sh
 
       - name: Restore cached build
         uses: actions/cache@v4
@@ -96,10 +132,17 @@ jobs:
             TAG=${{ matrix.os }}
             GHC=${{ matrix.ghc }}
 
+      # Docker needs these flags for AppImage build:
+      # --device /dev/fuse
+      # --cap-add SYS_ADMIN
+      # --security-opt apparmor:unconfined
       - name: Start container
         shell: bash
         run: |
           docker run -t -d \
+            --device /dev/fuse \
+            --cap-add SYS_ADMIN \
+            --security-opt apparmor:unconfined \
             --name builder \
             -v ~/.cabal:/root/.cabal \
             -v /home/runner/work/_temp:/home/runner/work/_temp \
@@ -208,6 +251,10 @@ jobs:
         run: |
           ./simplex-chat-test
 
+# =========================
+#        MacOS Build
+# =========================
+
   build-macos:
     name: "${{ matrix.os }} (CLI,Desktop), GHC: ${{ matrix.ghc }}"
     needs: [maybe-release, variables]
@@ -302,6 +349,10 @@ jobs:
         shell: bash
         run: cabal test --test-show-details=direct
 
+# =========================
+#      Windows Build
+# =========================
+
   build-windows:
     name: "${{ matrix.os }} (CLI,Desktop), GHC: ${{ matrix.ghc }}"
     needs: [maybe-release, variables]
@@ -347,6 +398,7 @@ jobs:
             toolchain:p
             cmake:p
 
+      # rm -rf dist-newstyle/src/direct-sq* is here because of the bug in cabal's dependency which prevents second build from finishing
       - name: Build CLI
         id: windows_cli_build
         shell: msys2 {0}

@@ -6,6 +6,7 @@ FROM ubuntu:${TAG} AS build
 
 ARG GHC=9.6.3
 ARG CABAL=3.10.1.0
+ARG JAVA=17
 
 ENV TZ=Etc/UTC \
     DEBIAN_FRONTEND=noninteractive
@@ -26,12 +27,18 @@ RUN apt-get update && \
                        libnuma-dev \
                        libssl-dev \
                        desktop-file-utils \
-                       openjdk-17-jdk-headless \
+                       openjdk-${JAVA}-jdk-headless \
                        patchelf \
                        ca-certificates \
                        zip \
+                       wget \
+                       fuse3 \
+                       file \
+                       appstream \
+                       gpg \
                        unzip &&\
-    export JAVA_HOME=$(update-java-alternatives -l | head -n 1 | awk -F ' ' '{print $NF}')
+    export JAVA_HOME=$(update-java-alternatives -l | head -n 1 | awk -F ' ' '{print $NF}') &&\
+    ln -s /bin/fusermount /bin/fusermount3 || :
 
 # Specify bootstrap Haskell versions
 ENV BOOTSTRAP_HASKELL_GHC_VERSION=${GHC}
