@@ -34,7 +34,9 @@ for elem in "${exports[@]}"; do count=$(grep -R "\"$elem\"" flake.nix | wc -l); 
 cd $root_dir
 mkdir dist-newstyle 2>/dev/null || true
 
-scripts/desktop/prepare-openssl-windows.sh
+if [ ! -d "./dist-newstyle/openssl-3.0.15" ]; then
+    scripts/desktop/prepare-openssl-windows.sh
+fi
 
 openssl_windows_style_path=$(echo `pwd`/dist-newstyle/openssl-3.0.15 | sed 's#/\([a-zA-Z]\)#\1:#' | sed 's#/#\\#g')
 rm -rf $BUILD_DIR 2>/dev/null || true
