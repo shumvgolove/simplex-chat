@@ -16,6 +16,6 @@ if [ ! -f dist-newstyle/openssl-3.0.15/libcrypto-3-x64.dll ]; then
     $WINDIR\\System32\\tar.exe -xvzf openssl.tar.gz
     cd openssl-3.0.15
     ./Configure mingw64
-    make
+    make -j
     cd ../../
 fi

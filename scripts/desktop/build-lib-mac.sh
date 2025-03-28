@@ -48,7 +48,7 @@ mkdir deps 2> /dev/null || true
     tar -xzvf libffi.tar.gz && \
     cd "libffi-3.4.4" && \
     ./configure && \
-    make && \
+    make -j && \
     cp *-apple-darwin*/.libs/libffi.dylib $BUILD/deps \
     )
 )
