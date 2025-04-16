@@ -119,7 +119,7 @@ jobs:
     steps:
       - name: Skip unreliable ghc 8.10.7 build on stable branch or in release
         shell: bash
-        if: inputs.ghc_ver == '8.10.7' && (inputs.github_ref == 'refs/heads/stable' || startsWith(inputs.github_ref, 'refs/tags/v'))
+        if: matrix.ghc == '8.10.7' && (github.ref == 'refs/heads/stable' || startsWith(github.ref, 'refs/tags/v'))
         run: exit 0
 
       - name: Checkout Code
@@ -199,7 +199,7 @@ jobs:
 
       - name: Copy CLI from container and prepare it
         id: linux_cli_prepare
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.cli_asset_name
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           docker cp builder:/out/simplex-chat ./${{ matrix.cli_asset_name }}
@@ -208,7 +208,7 @@ jobs:
           echo "bin_hash=$(echo SHA2-256\(${{ matrix.cli_asset_name }}\)= $(openssl sha256 $path | cut -d' ' -f 2))" >> $GITHUB_OUTPUT
 
       - name: Upload CLI
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.cli_asset_name
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: ./.github/actions/prepare-release
         with:
           bin_path: ${{ steps.linux_cli_prepare.outputs.bin_path }}
@@ -218,7 +218,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Desktop
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.desktop_asset_name
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: docker exec -t builder sh -eu {0}
         run: |
           scripts/desktop/build-lib-linux.sh
@@ -227,7 +227,7 @@ jobs:
 
       - name: Prepare Desktop
         id: linux_desktop_build
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.desktop_asset_name
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           path=$(echo ${{ github.workspace }}/apps/multiplatform/release/main/deb/simplex_*_amd64.deb )
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload Desktop
         uses: ./.github/actions/prepare-release
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.desktop_asset_name
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           bin_path: ${{ steps.linux_desktop_build.outputs.package_path }}
           bin_name: ${{ matrix.desktop_asset_name }}
@@ -245,14 +245,14 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build AppImage
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.desktop_asset_name && matrix.os == '22.04'
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.os == '22.04'
         shell: docker exec -t builder sh -eu {0}
         run: |
           scripts/desktop/make-appimage-linux.sh
 
       - name: Prepare AppImage
         id: linux_appimage_build
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.desktop_asset_name && matrix.os == '22.04'
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.os == '22.04'
         shell: bash
         run: |
           path=$(echo ${{ github.workspace }}/apps/multiplatform/release/main/*imple*.AppImage)
@@ -260,7 +260,7 @@ jobs:
           echo "appimage_hash=$(echo SHA2-256\(simplex-desktop-x86_64.AppImage\)= $(openssl sha256 $path | cut -d' ' -f 2))" >> $GITHUB_OUTPUT
 
       - name: Upload AppImage
-        if: startsWith(github.ref, 'refs/tags/v') && matrix.desktop_asset_name && matrix.os == '22.04'
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.os == '22.04'
         uses: ./.github/actions/prepare-release
         with:
           bin_path: ${{ steps.linux_appimage_build.outputs.appimage_path }}
