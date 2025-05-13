@@ -9,7 +9,7 @@ if [ "$ARCH" == "arm64" ]; then
 else
     vlc_arch=intel64
 fi
-vlc_version=3.0.19
+vlc_version='3.0.21-custom'
 
 function readlink() {
   echo "$(cd "$(dirname "$1")"; pwd -P)"
@@ -23,7 +23,7 @@ mkdir -p $vlc_dir/vlc || exit 0
 cd /tmp
 mkdir tmp 2>/dev/null || true
 cd tmp
-curl --tlsv1.2 https://github.com/simplex-chat/vlc/releases/download/v$vlc_version/vlc-macos-$ARCH.zip -L -o vlc
+curl --tlsv1.2 https://github.com/shumvgolove/vlc/releases/download/v$vlc_version/vlc-macos-$ARCH.zip -L -o vlc
 unzip -oqq vlc
 install_name_tool -add_rpath "@loader_path/VLC.app/Contents/MacOS/lib" vlc-cache-gen
 cd VLC.app/Contents/MacOS/lib
