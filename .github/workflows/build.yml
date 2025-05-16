@@ -102,7 +102,6 @@ jobs:
     name: "ubuntu-${{ matrix.os }} (CLI,Desktop), GHC: ${{ matrix.ghc }}"
     needs: [maybe-release, variables]
     runs-on: ubuntu-${{ matrix.os }}
-    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -320,6 +319,7 @@ jobs:
     name: "${{ matrix.os }} (CLI,Desktop), GHC: ${{ matrix.ghc }}"
     needs: [maybe-release, variables]
     runs-on: ${{ matrix.os }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -434,6 +434,7 @@ jobs:
     name: "${{ matrix.os }} (CLI,Desktop), GHC: ${{ matrix.ghc }}"
     needs: [maybe-release, variables]
     runs-on: ${{ matrix.os }}
+    if: false
     strategy:
       fail-fast: false
       matrix:
