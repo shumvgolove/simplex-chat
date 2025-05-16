@@ -16,7 +16,7 @@ mkdir tmp 2>/dev/null || true
 cd tmp
 curl --tlsv1.2 -LO https://github.com/shumvgolove/vlc/releases/download/v3.0.21-custom.5/vlc-linux-x86_64.zip
 unzip vlc-linux-x86_64.zip
-cp -r usr/lib/* $vlc_dir
+cp -r lib/* $vlc_dir
 cd ../
 rm -rf tmp
 exit 0
