@@ -9,7 +9,7 @@ if [ "$ARCH" == "arm64" ]; then
 else
     vlc_arch=intel64
 fi
-vlc_version='3.0.21-custom.3'
+vlc_version='3.0.21-custom.6'
 
 function readlink() {
   echo "$(cd "$(dirname "$1")"; pwd -P)"
