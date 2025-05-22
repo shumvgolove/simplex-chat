@@ -14,9 +14,10 @@ mkdir $vlc_dir || exit 0
 cd /tmp
 mkdir tmp 2>/dev/null || true
 cd tmp
-curl --tlsv1.2 -LO https://github.com/shumvgolove/vlc/releases/download/v3.0.21-custom.5/vlc-linux-x86_64.zip
-unzip vlc-linux-x86_64.zip
-cp -r lib/* $vlc_dir
+curl --tlsv1.2 -L 'https://github.com/shumvgolove/vlc/releases/download/v3.0.21-custom.6/vlc-linux-x86_64.appimage' -o appimage
+chmod +x appimage
+./appimage --appimage-extract
+cp -r squashfs-root/usr/lib/* $vlc_dir
 cd ../
 rm -rf tmp
 exit 0
