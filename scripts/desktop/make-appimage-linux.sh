@@ -18,6 +18,10 @@ cp $libcrypto_path common/src/commonMain/cpp/desktop/libs/*
 ./gradlew createDistributable
 rm common/src/commonMain/cpp/desktop/libs/*/`basename $libcrypto_path`
 
+# Delete redundant jar file and modify cfg
+rm -f $release_app_dir/*imple*/lib/app/*skiko-awt-runtime-linux*
+sed -i -e '/skiko-awt-runtime-linux/d' $release_app_dir/*imple*/lib/app/simplex.cfg
+
 rm -rf $release_app_dir/AppDir 2>/dev/null
 mkdir -p $release_app_dir/AppDir/usr
 
