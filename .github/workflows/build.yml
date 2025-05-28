@@ -265,12 +265,17 @@ jobs:
           # Also, it seems this is related to:
           # https://youtrack.jetbrains.com/issue/CMP-1971/createDistributable-produces-duplicated-skiko-awt.jar-and-skiko-awt-runtime-windows-x64.jar
           # 
+          export SOURCE_DATE_EPOCH=1704067200
+
           dpkg-deb -R ./release/main/deb/simplex*.deb ./extracted
 
           rm -f ./extracted/opt/*imple*/lib/app/*skiko-awt-runtime-linux*
           sed -i -e '/skiko-awt-runtime-linux/d' ./extracted/opt/*imple*/lib/app/simplex.cfg
+          find ./extracted/ -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
 
-          dpkg-deb -b ./extracted ./release/main/deb/simplex_amd64.deb
+          dpkg-deb --build --root-owner-group --uniform-compression ./extracted ./release/main/deb/simplex_amd64.deb
+
+          strip-nondeterminism ./release/main/deb/simplex_amd64.deb
 
       - name: Prepare Desktop
         id: linux_desktop_build
