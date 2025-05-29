@@ -18,10 +18,6 @@ cp $libcrypto_path common/src/commonMain/cpp/desktop/libs/*
 ./gradlew createDistributable
 rm common/src/commonMain/cpp/desktop/libs/*/`basename $libcrypto_path`
 
-# Delete redundant jar file and modify cfg
-rm -f $release_app_dir/*imple*/lib/app/*skiko-awt-runtime-linux*
-sed -i -e '/skiko-awt-runtime-linux/d' $release_app_dir/*imple*/lib/app/simplex.cfg
-
 rm -rf $release_app_dir/AppDir 2>/dev/null
 mkdir -p $release_app_dir/AppDir/usr
 
@@ -48,6 +44,20 @@ if [ ! -f ../runtime-x86_64 ]; then
     wget --secure-protocol=TLSv1_3 https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 -O ../runtime-x86_64
     chmod +x ../runtime-x86_64
 fi
-../appimagetool-x86_64.AppImage --runtime-file ../runtime-x86_64 .
 
+# Determenistic build
+
+export SOURCE_DATE_EPOCH=1704067200
+
+# Delete redundant jar file and modify cfg
+rm -f ./usr/lib/app/*skiko-awt-runtime-linux*
+sed -i -e '/skiko-awt-runtime-linux/d' ./usr/lib/app/simplex.cfg
+
+# Set all files to fixed time
+find . -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
+
+../appimagetool-x86_64.AppImage --verbose --no-appstream --runtime-file ../runtime-x86_64 .
 mv *imple*.AppImage ../../
+
+# Just a safeguard
+strip-nondeterminism ../../*imple*.AppImage
