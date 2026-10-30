@@ -2,6 +2,9 @@ name: build-apps
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - sh/build-apps-release-test
 
 permissions:
   contents: read
@@ -67,6 +70,7 @@ jobs:
   android-bundle:
     name: Android Play bundle
     needs: android
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -96,6 +100,7 @@ jobs:
 
   ios:
     name: iOS archive
+    if: false
     runs-on: macos-26
     timeout-minutes: 360
     steps:
