@@ -54,12 +54,12 @@ jobs:
 
       - name: Generate a throwaway key
         run: |
-          keytool -genkeypair -keystore "$RUNNER_TEMP/test.keystore" -storepass test-store -keypass test-key -alias test \
+          keytool -genkeypair -keystore "$RUNNER_TEMP/test.keystore" -storepass test-store -keypass test-store -alias test \
             -keyalg RSA -keysize 2048 -validity 1 -dname CN=test
           echo "ANDROID_KEYSTORE=$RUNNER_TEMP/test.keystore" >> "$GITHUB_ENV"
           echo ANDROID_KEYSTORE_PASSWORD=test-store >> "$GITHUB_ENV"
           echo ANDROID_KEY_ALIAS=test >> "$GITHUB_ENV"
-          echo ANDROID_KEY_PASSWORD=test-key >> "$GITHUB_ENV"
+          echo ANDROID_KEY_PASSWORD=test-store >> "$GITHUB_ENV"
 
       - name: Build APK
         run: scripts/simplex-chat-reproduce-builds.py build android-apk ${{ matrix.arch }} --out "$RUNNER_TEMP/out" --nix-cache
