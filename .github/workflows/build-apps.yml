@@ -1,0 +1,56 @@
+name: build-apps
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  # newer images add Command Line Tools whose macOS SDK the default Xcode's linker cannot read
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  desktop-linux:
+    name: Desktop Ubuntu ${{ matrix.ubuntu }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { ubuntu: "22.04", arch: x86_64, runner: ubuntu-22.04 }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Free disk space
+        run: scripts/ci/linux_util_free_space.sh
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build CLI and desktop apps
+        run: |
+          version=$(sed -n 's/^version: *//p' simplex-chat.cabal)
+          python3 scripts/simplex-chat-build.py build desktop linux ${{ matrix.ubuntu }} --version "$version" --out "$RUNNER_TEMP/out"
+
+      - name: Upload apps
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-ubuntu-${{ matrix.ubuntu }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/out
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+
