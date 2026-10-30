@@ -70,6 +70,7 @@ build_apk() {
     export PATH="$(dirname "$gradle_bin"):$PATH"
     ARCHES="$ARCH" ./scripts/android/build-android.sh -gs "$VERCODE"
     cp "simplex-chat-$ABI.apk" "/out/simplex-$ARCH.apk"
+    cp apps/multiplatform/android/build/outputs/apk/foss/release/*.apk /out/agp-raw.apk
     cp "result-$ARCH-libsimplex/pkg-$ARCH-android-libsimplex.zip" "result-$ARCH-libsupport/pkg-$ARCH-android-libsupport.zip" /out/'
   checksums
 }
