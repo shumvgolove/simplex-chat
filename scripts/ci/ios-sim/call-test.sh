@@ -99,7 +99,7 @@ done
 open_chat() {
   local peer=$1 contact
   contact=$(get name "$2")
-  if on "$peer" tree | grep -qE '^Button "(Phone|phone)"'; then
+  if on "$peer" tree | grep -qE '^PopUpButton "Call"'; then
     return
   fi
   on "$peer" tap "Close" 5 || true
@@ -114,12 +114,13 @@ tap_line() {
   on "$1" tap-xy $((x + w / 2)) $((y + h / 2))
 }
 
-# taps the first button whose label matches the pattern, waiting up to secs for it
+# taps the first element of the types (default: a button or a pop-up button, the chat's "Call" menu) whose label
+# matches the pattern, waiting up to secs for it
 tap_button() {
-  local peer=$1 pattern=$2 secs=$3 line
+  local peer=$1 pattern=$2 secs=$3 types=${4:-Button|PopUpButton} line
   local deadline=$((SECONDS + secs))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    line=$(on "$peer" tree | grep -E "^Button \"($pattern)\"" | head -n 1 || true)
+    line=$(on "$peer" tree | grep -E "^($types) \"($pattern)\"" | head -n 1 || true)
     if [ -n "$line" ]; then
       tap_line "$peer" "$line"
       return
@@ -173,7 +174,7 @@ check_video() {
 video_call() {
   local caller=$1 callee=$2 call="$1-calls-$2"
   open_chat "$caller" "$callee"
-  tap_button "$caller" "Phone|phone" 120 || fail "$caller's chat with $callee has no call button"
+  tap_button "$caller" Call 120 || fail "$caller's chat with $callee has no call button"
   on "$caller" tap "Video call" 10
   on "$caller" shot "$call-calling"
   on "$callee" wait Accept 60 || fail "$callee got no incoming call"
@@ -184,7 +185,8 @@ video_call() {
   sleep "$call_seconds"
   check_video "$caller" "$call"
   check_video "$callee" "$call"
-  tap_button "$caller" "End call|phone.down.fill|End" 10 || fail "$call: no button to end the call"
+  # the call's buttons may carry their label on the image inside, as the chat's "Call" menu does
+  tap_button "$caller" "End [Cc]all|phone.down.fill|End|Hang up" 10 "Button|Image" || fail "$call: no button to end the call"
   on "$callee" wait "Accept" 1 > /dev/null 2>&1 || true
   sleep 5
   on "$caller" shot "$call-ended"
