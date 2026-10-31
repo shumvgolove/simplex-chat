@@ -14,9 +14,13 @@ on:
         type: boolean
         default: false
       calls:
-        description: Test video calls between two simulators, with this branch's WebRTC and with stable's
+        description: Test video calls between two simulators, this branch's app with itself and with another ref's
         type: boolean
         default: false
+      calls_with:
+        description: The other ref's app for the call test, built with this branch's core library
+        type: string
+        default: master
 
 permissions:
   contents: read
@@ -111,6 +115,7 @@ jobs:
       BUILD_CORE: ${{ needs.plan.outputs.core-run == '' }}
       BUILD_BACKEND: ${{ needs.plan.outputs.run-backend == 'true' && needs.plan.outputs.backend-run == '' }}
       CALLS: ${{ inputs.calls || github.event_name == 'push' }}
+      CALLS_WITH: ${{ inputs.calls_with || 'master' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -222,24 +227,25 @@ jobs:
       - name: Run smoke test
         run: scripts/ci/ios-sim/smoke-test.sh "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" "$RUNNER_TEMP/smoke-test" images
 
-      - name: Build app with stable's WebRTC
+      - name: Build the other ref's app
+        id: other-app
         if: env.CALLS == 'true'
-        run: scripts/ci/ios-sim/build-app.sh "$RUNNER_TEMP/DerivedData-stable" stable
+        run: scripts/ci/ios-sim/build-app.sh "$RUNNER_TEMP/DerivedData-other" "$CALLS_WITH"
 
-      - name: Test calls between two apps with this branch's WebRTC
+      - name: Test calls between two of this branch's apps
         if: env.CALLS == 'true'
         run: |
           xcrun simctl shutdown "$SIM_UDID"
           app=$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app
           scripts/ci/ios-sim/call-test.sh "$app" "$app" "$RUNNER_TEMP/call-test/branch-branch"
 
-      - name: Test calls between this branch's WebRTC and stable's
-        if: ${{ !cancelled() && env.CALLS == 'true' }}
+      - name: Test calls between this branch's app and the other ref's
+        if: ${{ !cancelled() && steps.other-app.outcome == 'success' }}
         run: |
           scripts/ci/ios-sim/call-test.sh \
             "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" \
-            "$RUNNER_TEMP/DerivedData-stable/Build/Products/Debug-iphonesimulator/SimpleX.app" \
-            "$RUNNER_TEMP/call-test/branch-stable"
+            "$RUNNER_TEMP/DerivedData-other/Build/Products/Debug-iphonesimulator/SimpleX.app" \
+            "$RUNNER_TEMP/call-test/branch-other"
 
       - name: Stop test backend
         if: ${{ !cancelled() && env.START_BACKEND == 'true' }}

@@ -23,14 +23,6 @@ call_seconds=20
 frame_region="300 1000 600 600"
 mkdir -p "$out"
 
-for peer in alice bob; do
-  [ -f "$(get app "$peer")/sounds/video.mp4" ] || {
-    echo "error: $(get app "$peer") has no sounds/video.mp4 to send as the camera"
-    exit 1
-  }
-done
-swiftc -O -o "$out/call-frame" "$here/call-frame.swift"
-
 # SC2034: get reads them by name
 # shellcheck disable=SC2034
 udid_alice='' udid_bob='' log_pid_alice='' log_pid_bob=''
@@ -40,6 +32,15 @@ get() {
   local var=$1_$2
   echo "${!var}"
 }
+
+for peer in alice bob; do
+  [ -f "$(get app "$peer")/sounds/video.mp4" ] || {
+    echo "error: $(get app "$peer") has no sounds/video.mp4 to send as the camera"
+    exit 1
+  }
+done
+swiftc -O -o "$out/call-frame" "$here/call-frame.swift"
+
 peers=(alice bob)
 
 on() {

@@ -1,32 +1,26 @@
 #!/bin/bash
 
 # Builds the iOS app for the simulator into <derived data>/Build/Products/Debug-iphonesimulator/SimpleX.app.
-# With a git ref, it builds the app with the WebRTC package that ref pins, such as the released app's, and then
-# restores the branch's pin, so the call test can call between the branch's WebRTC and that one.
-# Usage: scripts/ci/ios-sim/build-app.sh <derived data> [git ref for WebRTC]
+# With a git ref, it builds that ref's apps/ios, with its WebRTC, against the core library this branch prepared,
+# then restores the branch's apps/ios. The call test calls between this app and the branch's, so a branch
+# that changes the core library can't use it: the ref's Swift code would run against the branch's core.
+# Usage: scripts/ci/ios-sim/build-app.sh <derived data> [git ref]
 
 set -euo pipefail
 
 derived_data=$1
-webrtc_ref=${2:-}
-project=apps/ios/SimpleX.xcodeproj
-pins=("$project/project.pbxproj" "$project/project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+ref=${2:-}
 
-webrtc_revision() {
-  grep -A3 'simplex-chat/WebRTC' | grep -oE '[0-9a-f]{40}' | head -n 1
-}
-
-if [ -n "$webrtc_ref" ]; then
-  git fetch --depth 1 origin "$webrtc_ref"
-  current=$(webrtc_revision < "${pins[1]}")
-  other=$(git show "FETCH_HEAD:${pins[1]}" | webrtc_revision)
-  echo "building with the WebRTC of $webrtc_ref ($other) in place of $current"
-  trap 'git checkout -- "${pins[@]}"' EXIT
-  sed -i '' "s/$current/$other/" "${pins[@]}"
+if [ -n "$ref" ]; then
+  git fetch --depth 1 origin "$ref"
+  echo "building apps/ios of $ref ($(git rev-parse --short FETCH_HEAD))"
+  trap 'git checkout HEAD -- apps/ios && scripts/ios/update-pbxproj.sh' EXIT
+  git checkout FETCH_HEAD -- apps/ios
+  scripts/ios/update-pbxproj.sh
 fi
 
 xcodebuild build -quiet \
-  -project "$project" \
+  -project apps/ios/SimpleX.xcodeproj \
   -scheme "SimpleX (iOS)" \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \
