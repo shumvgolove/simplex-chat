@@ -110,7 +110,7 @@ jobs:
       START_BACKEND: ${{ needs.plan.outputs.run-backend }}
       BUILD_CORE: ${{ needs.plan.outputs.core-run == '' }}
       BUILD_BACKEND: ${{ needs.plan.outputs.run-backend == 'true' && needs.plan.outputs.backend-run == '' }}
-      CALLS: ${{ inputs.calls }}
+      CALLS: ${{ inputs.calls || github.event_name == 'push' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
