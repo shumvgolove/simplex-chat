@@ -13,6 +13,10 @@ on:
         description: Start the test backend
         type: boolean
         default: false
+      calls:
+        description: Test video calls between two simulators, with this branch's WebRTC and with stable's
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -106,6 +110,7 @@ jobs:
       START_BACKEND: ${{ needs.plan.outputs.run-backend }}
       BUILD_CORE: ${{ needs.plan.outputs.core-run == '' }}
       BUILD_BACKEND: ${{ needs.plan.outputs.run-backend == 'true' && needs.plan.outputs.backend-run == '' }}
+      CALLS: ${{ inputs.calls }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -190,22 +195,13 @@ jobs:
         timeout-minutes: 30
         run: scripts/ci/ios-sim/backend.sh start ~/Downloads/${{ env.BACKEND_PKG }} "$RUNNER_TEMP/backend"
 
+      # the simulator has no camera: the app sends sounds/video.mp4 in its place
+      - name: Make test video
+        if: env.CALLS == 'true'
+        run: swift scripts/ci/ios-sim/test-video.swift apps/ios/sounds/video.mp4
+
       - name: Build app
-        run: |
-          xcodebuild build -quiet \
-            -project apps/ios/SimpleX.xcodeproj \
-            -scheme "SimpleX (iOS)" \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            -onlyUsePackageVersionsFromResolvedFile \
-            -skipPackagePluginValidation \
-            -skipMacroValidation \
-            ARCHS=arm64 \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY=- \
-            DEVELOPMENT_TEAM= \
-            PROVISIONING_PROFILE_SPECIFIER=
+        run: scripts/ci/ios-sim/build-app.sh "$RUNNER_TEMP/DerivedData"
 
       # a tarball keeps the app's file modes, which an artifact drops
       - name: Pack app
@@ -226,9 +222,37 @@ jobs:
       - name: Run smoke test
         run: scripts/ci/ios-sim/smoke-test.sh "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" "$RUNNER_TEMP/smoke-test" images
 
+      - name: Build app with stable's WebRTC
+        if: env.CALLS == 'true'
+        run: scripts/ci/ios-sim/build-app.sh "$RUNNER_TEMP/DerivedData-stable" stable
+
+      - name: Test calls between two apps with this branch's WebRTC
+        if: env.CALLS == 'true'
+        run: |
+          xcrun simctl shutdown "$SIM_UDID"
+          app=$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app
+          scripts/ci/ios-sim/call-test.sh "$app" "$app" "$RUNNER_TEMP/call-test/branch-branch"
+
+      - name: Test calls between this branch's WebRTC and stable's
+        if: ${{ !cancelled() && env.CALLS == 'true' }}
+        run: |
+          scripts/ci/ios-sim/call-test.sh \
+            "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" \
+            "$RUNNER_TEMP/DerivedData-stable/Build/Products/Debug-iphonesimulator/SimpleX.app" \
+            "$RUNNER_TEMP/call-test/branch-stable"
+
       - name: Stop test backend
         if: ${{ !cancelled() && env.START_BACKEND == 'true' }}
         run: scripts/ci/ios-sim/backend.sh stop "$RUNNER_TEMP/backend"
+
+      - name: Upload call test results
+        if: ${{ !cancelled() && env.CALLS == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-sim-call-test
+          path: ${{ runner.temp }}/call-test
+          retention-days: 3
+          if-no-files-found: warn
 
       - name: Upload smoke test results
         if: ${{ !cancelled() }}
