@@ -1,6 +1,8 @@
 name: ios-sim
 
 on:
+  push:
+    branches: [sh/ios-webrtc-m156-ci]
   workflow_dispatch:
     inputs:
       claude:
