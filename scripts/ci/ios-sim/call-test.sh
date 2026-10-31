@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Video calls between two apps, each in its own iPhone simulator, over the preset servers: alice and bob onboard,
-# connect with alice's 1-time link, alice calls bob, then bob calls alice; the callee accepts in the app (CallKit off).
+# Video calls between two apps, each in its own iPhone simulator, over the preset servers: Alice and Bob onboard,
+# connect with Alice's 1-time link, Alice calls Bob, then Bob calls Alice; the callee accepts in the app (CallKit off).
 # alice and bob can run different builds, such as the app with a new and with an old WebRTC.
 # Each app sends sounds/video.mp4 (test-video.swift) in place of the camera, a color that changes every half second.
 # A call passes when both screens show it connected and e2e encrypted, each shows the other's video in two
@@ -25,7 +25,7 @@ mkdir -p "$out"
 
 # SC2034: get reads them by name
 # shellcheck disable=SC2034
-udid_alice='' udid_bob='' log_pid_alice='' log_pid_bob=''
+udid_alice='' udid_bob='' log_pid_alice='' log_pid_bob='' name_alice=Alice name_bob=Bob
 
 # macOS's bash 3.2 has no associative arrays: per-peer values are variables named <name>_<peer>
 get() {
@@ -88,43 +88,24 @@ start_app() {
   xcrun simctl launch "$udid" "$bundle_id"
 }
 
+# one simulator at a time: with both starting, the runner read no accessibility tree for minutes (run 41229483743)
 for peer in "${peers[@]}"; do
   start_app "$peer"
-done
-for peer in "${peers[@]}"; do
-  SIM_UDID=$(get udid "$peer") UI_OUT=$out/$peer onboard "$peer"
+  SIM_UDID=$(get udid "$peer") UI_OUT=$out/$peer onboard "$(get name "$peer")"
 done
 
-# alice's 1-time link, read from the tree, reaches bob's clipboard
-on alice tap "Let someone connect to you"
-on alice wait "simplex" 60
-on alice shot invitation
-link=$(on alice tree | grep -oE 'https://[^" ]+/(i|invitation)#[^" ]+|simplex:/invitation#[^" ]+' | head -n 1)
-[ -n "$link" ] || fail "alice's 1-time link is not in the tree"
-echo "alice's link: $link"
-on bob clipboard "$link"
-
-on bob tap "Connect via link or QR code"
-on bob wait "Tap to paste link" 30
-on bob shot connect-via-link
-on bob tap "Tap to paste link"
-# iOS asks before an app reads the clipboard
-on bob tap "Allow Paste" 10 || true
-on bob shot link-pasted
-# a 1-time link asks which profile connects
-on bob tap "Use current profile" 20 || on bob tap "Connect" 10 || true
-on bob shot connecting
-
-on alice wait bob 180 || fail "bob did not connect to alice"
-on bob wait alice 60 || fail "bob has no contact alice"
-on alice shot connected-to-bob
-
+# The peers have one contact each, so a shown call button is the chat with it; tapping the name there would open
+# the contact's info.
 open_chat() {
-  local peer=$1 contact=$2
+  local peer=$1 contact
+  contact=$(get name "$2")
+  if on "$peer" tree | grep -qE '^Button "(Phone|phone)"'; then
+    return
+  fi
   on "$peer" tap "Close" 5 || true
   on "$peer" wait "$contact" 30
   on "$peer" tap "$contact" 10 || on "$peer" tap-value "$contact" 10
-  on "$peer" shot "chat-with-$contact"
+  on "$peer" shot "chat-with-$2"
 }
 
 tap_line() {
@@ -210,6 +191,34 @@ video_call() {
   on "$callee" shot "$call-ended"
   echo "$call: connected, e2e encrypted, video both ways"
 }
+
+# Alice's 1-time link, read from the tree, reaches Bob's clipboard; Bob opens it as a new chat and connects
+on alice tap "Let someone connect to you" 30
+on alice tap "Invite someone privately" 30
+on alice wait "simplex" 60
+on alice shot invitation
+link=$(on alice tree | grep -oE 'https://[^" ]+/(i|invitation)#[^" ]+|simplex:/invitation#[^" ]+' | head -n 1)
+[ -n "$link" ] || fail "Alice's 1-time link is not in the tree"
+echo "Alice's link: $link"
+on bob clipboard "$link"
+
+on bob tap "Connect via link or QR code" 30
+on bob wait "Tap to paste link" 30
+on bob shot connect-via-link
+on bob tap "Tap to paste link"
+# iOS asks before an app reads the clipboard
+on bob tap "Allow Paste" 10 || true
+on bob shot link-pasted
+on bob tap "Open new chat" 60 || on bob tap "Use current profile" 10 || fail "Bob's app did not offer to open Alice's link"
+tap_button bob Connect 60 || fail "Bob's new chat with Alice has no Connect button"
+on bob shot connecting
+
+on alice wait Bob 180 || fail "Bob did not connect to Alice"
+on bob wait Alice 60 || fail "Bob has no contact Alice"
+on alice shot connected-to-bob
+# the invitation sheet stays open over the chat list
+on alice swipe 201 150 201 800
+on alice shot invitation-closed
 
 video_call alice bob
 video_call bob alice

@@ -46,25 +46,26 @@ allow_notifications() {
 }
 
 # From the app's first screen to the chat list, creating the profile $1; shot names start with $2.
+# Taps wait up to 30 s: a runner with two simulators read no accessibility tree for over 10 s (run 41229483743).
 onboard() {
   local name=$1 prefix=${2:-}
   "$ui" wait "Get started" 180
   "$ui" shot "${prefix}first-screen"
-  "$ui" tap "Get started"
+  "$ui" tap "Get started" 30
 
   "$ui" wait "Create profile" 30
-  "$ui" tap-value "Enter profile name..."
+  "$ui" tap-value "Enter profile name..." 30
   "$ui" type "$name"
   "$ui" shot "${prefix}profile-name"
-  "$ui" tap "Create profile"
+  "$ui" tap "Create profile" 30
 
   "$ui" wait "Continue" 60
   "$ui" shot "${prefix}your-network"
-  "$ui" tap "Continue"
+  "$ui" tap "Continue" 30
 
   "$ui" wait "Accept" 30
   "$ui" shot "${prefix}network-commitments"
-  "$ui" tap "Accept"
+  "$ui" tap "Accept" 30
 
   sleep 5
   "$ui" shot "${prefix}after-onboarding"
