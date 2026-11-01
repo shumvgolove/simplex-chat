@@ -7,11 +7,12 @@ import AVFoundation
 import CoreVideo
 import Foundation
 
-let width = 480
-let height = 640
-let framesPerSecond: Int32 = 15
+// small and slow: on a loaded runner both apps encoded about 30 frames in a call at 480x640, 15 fps (run 41271276138)
+let width = 240
+let height = 320
+let framesPerSecond: Int32 = 10
 let seconds = 30
-let framesPerColor = 7
+let framesPerColor = 5
 // BGRA, saturated and far from black, so call-frame.swift tells them from a dark or empty view
 let colors: [(b: UInt8, g: UInt8, r: UInt8)] = [
     (0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 0, 255), (255, 255, 0),

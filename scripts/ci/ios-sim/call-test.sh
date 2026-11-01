@@ -217,7 +217,7 @@ video_call() {
   tap_button "$caller" Call 120 || fail "$caller's chat with $callee has no call button"
   on "$caller" tap "Video call" 10
   on "$caller" shot "$call-calling"
-  on "$callee" wait Accept 60 || fail "$callee got no incoming call"
+  on "$callee" wait Accept 120 || fail "$callee got no incoming call"
   on "$callee" shot "$call-incoming"
   on "$callee" tap Accept
   expect_call "$caller" "$call"
