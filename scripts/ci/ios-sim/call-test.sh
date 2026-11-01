@@ -163,11 +163,26 @@ call_ended() {
   return 1
 }
 
+app_pid() {
+  pgrep -f "$(get udid "$1")/.*/SimpleX.app/SimpleX$" | head -n 1 || true
+}
+
+# Two simulators share the Mac's audio server: an app stopping its audio after a call aborted with "AURemoteIO: RPC
+# timeout. Apparently deadlocked" (run 41333783822). That app is started again; any other exit fails the test.
+ensure_running() {
+  local peer=$1
+  [ -z "$(app_pid "$peer")" ] || return 0
+  grep -q "AURemoteIO: RPC timeout" "$out/$peer/app.log" || fail "$peer's app is not running"
+  echo "::warning::$peer's app aborted in the simulator's audio server after its call ended; starting it again"
+  xcrun simctl launch "$(get udid "$peer")" "$bundle_id" > /dev/null
+  on "$peer" wait Compose 90
+}
+
 # Saves the stacks of the app's threads, for a call that does not end: in run 41311546712 the app that ended a call
 # froze, its main thread logging nothing after WebRTCClient's "ending the call".
 sample_app() {
   local peer=$1 pid
-  pid=$(pgrep -f "$(get udid "$peer")/.*/SimpleX.app/SimpleX$" | head -n 1 || true)
+  pid=$(app_pid "$peer")
   if [ -z "$pid" ]; then
     echo "$peer's app is not running"
     return
@@ -259,6 +274,8 @@ check_media() {
 
 video_call() {
   local caller=$1 callee=$2 call="$1-calls-$2" caller_from callee_from
+  ensure_running "$caller"
+  ensure_running "$callee"
   caller_from=$(($(wc -l < "$out/$caller/app.log") + 1))
   callee_from=$(($(wc -l < "$out/$callee/app.log") + 1))
   open_chat "$caller" "$callee"
@@ -276,8 +293,9 @@ video_call() {
   report_screen "$callee" "$call"
   check_media "$caller" "$call" "$caller_from"
   check_media "$callee" "$call" "$callee_from"
-  # the callee ends the call, so each app of a test ends one of its two calls
-  end_call "$callee" "$caller" "$call"
+  # Alice, this branch's app, ends both calls: before this branch's fix, ending a call closed it twice at once and
+  # froze the app (run 41333783822).
+  end_call alice bob "$call"
   on "$caller" shot "$call-ended"
   on "$callee" shot "$call-ended"
   echo "$call: connected, e2e encrypted, audio and video both ways"
