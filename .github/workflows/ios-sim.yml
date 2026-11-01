@@ -115,7 +115,7 @@ jobs:
       BUILD_CORE: ${{ needs.plan.outputs.core-run == '' }}
       BUILD_BACKEND: ${{ needs.plan.outputs.run-backend == 'true' && needs.plan.outputs.backend-run == '' }}
       CALLS: ${{ inputs.calls || github.event_name == 'push' }}
-      CALLS_WITH: ${{ inputs.calls_with || (github.event_name == 'push' && 'd3f6b78b991c948f9e3ff1b6cb06b425d58121a0') || 'master' }}
+      CALLS_WITH: ${{ inputs.calls_with || (github.event_name == 'push' && 'ea993ae99c214d9f668c856719aab646da308b73') || 'master' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
