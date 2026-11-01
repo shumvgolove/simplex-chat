@@ -202,7 +202,6 @@ jobs:
 
       # the simulator has no camera: the app sends sounds/video.mp4 in its place
       - name: Make test video
-        if: env.CALLS == 'true'
         run: swift scripts/ci/ios-sim/test-video.swift apps/ios/sounds/video.mp4
 
       - name: Build app
@@ -226,6 +225,9 @@ jobs:
 
       - name: Run smoke test
         run: scripts/ci/ios-sim/smoke-test.sh "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" "$RUNNER_TEMP/smoke-test" images
+
+      - name: Test calls between two call clients
+        run: scripts/ci/ios-sim/call-xctest.sh "$RUNNER_TEMP/DerivedData" "$RUNNER_TEMP/call-test/xctest"
 
       - name: Build the other ref's app
         id: other-app
@@ -252,7 +254,7 @@ jobs:
         run: scripts/ci/ios-sim/backend.sh stop "$RUNNER_TEMP/backend"
 
       - name: Upload call test results
-        if: ${{ !cancelled() && env.CALLS == 'true' }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: ios-sim-call-test
