@@ -257,7 +257,8 @@ on alice shot invitation
 link=$(on alice tree | grep -oE 'https://[^" ]+/(i|invitation)#[^" ]+|simplex:/invitation#[^" ]+' | head -n 1)
 [ -n "$link" ] || fail "Alice's 1-time link is not in the tree"
 echo "Alice's link: $link"
-on bob clipboard "$link"
+# copying to the clipboard timed out once in both call tests of a run (run 41299700451)
+SIM_UDID=$(get udid bob) UI_OUT=$out/bob ui_retry clipboard "$link"
 
 on bob tap "Connect via link or QR code" 30
 on bob wait "Tap to paste link" 30
