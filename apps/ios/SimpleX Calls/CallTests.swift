@@ -56,7 +56,14 @@ final class CallTests: XCTestCase {
         }
 
         for peer in [caller, callee] {
-            try await waitUntil("\(peer.name) decodes \(Self.videoFrames) video frames and receives \(Self.audioPackets) audio packets", seconds: Self.mediaTimeout) {
+            try await waitUntil(
+                "\(peer.name) decodes \(Self.videoFrames) video frames and receives \(Self.audioPackets) audio packets",
+                seconds: Self.mediaTimeout,
+                state: {
+                    let stats = await peer.client.mediaStats()
+                    return "\(String(describing: stats)), \(peer.client.frameCounts)"
+                }
+            ) {
                 guard let stats = await peer.client.mediaStats() else { return false }
                 return stats.videoFramesDecoded >= Self.videoFrames && stats.audioPacketsReceived >= Self.audioPackets
             }
@@ -93,11 +100,17 @@ private enum CallTestError: Error {
     case timeout(String)
 }
 
-private func waitUntil(_ what: String, seconds: Double, _ condition: () async -> Bool) async throws {
+private func waitUntil(
+    _ what: String,
+    seconds: Double,
+    state: () async -> String = { "" },
+    _ condition: () async -> Bool
+) async throws {
     let deadline = Date().addingTimeInterval(seconds)
     while !(await condition()) {
         guard Date() < deadline else {
-            XCTFail("waited \(Int(seconds)) s until \(what)")
+            let current = await state()
+            XCTFail("waited \(Int(seconds)) s until \(what) \(current)")
             throw CallTestError.timeout(what)
         }
         try await Task.sleep(nanoseconds: 250_000_000)
