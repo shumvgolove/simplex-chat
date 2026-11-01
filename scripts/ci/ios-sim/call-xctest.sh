@@ -35,4 +35,7 @@ xcodebuild build-for-testing -quiet "${xcode[@]}"
 xcrun simctl install "$sim" "$derived/Build/Products/Debug-iphonesimulator/SimpleX.app"
 xcrun simctl privacy "$sim" grant microphone "$bundle_id"
 xcrun simctl privacy "$sim" grant camera "$bundle_id"
-xcodebuild test-without-building -resultBundlePath "$out/CallTests.xcresult" "${xcode[@]}"
+# a hung test fails after 10 minutes, rather than with the job's limit (run 41295737388)
+xcodebuild test-without-building -resultBundlePath "$out/CallTests.xcresult" \
+  -test-timeouts-enabled YES -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 600 \
+  "${xcode[@]}"

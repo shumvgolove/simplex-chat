@@ -222,6 +222,7 @@ jobs:
           if-no-files-found: error
 
       - name: Test calls between two call clients
+        timeout-minutes: 30
         run: scripts/ci/ios-sim/call-xctest.sh "$RUNNER_TEMP/DerivedData" "$RUNNER_TEMP/call-test/xctest"
 
       # the tests after the call tests run whenever the app built: each checks something else
