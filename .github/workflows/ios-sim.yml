@@ -205,6 +205,7 @@ jobs:
         run: swift scripts/ci/ios-sim/test-video.swift apps/ios/sounds/video.mp4
 
       - name: Build app
+        id: build
         run: scripts/ci/ios-sim/build-app.sh "$RUNNER_TEMP/DerivedData"
 
       # a tarball keeps the app's file modes, which an artifact drops
@@ -220,24 +221,27 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      - name: Install AXe
-        run: scripts/ci/ios-sim/install-axe.sh
-
-      - name: Run smoke test
-        run: scripts/ci/ios-sim/smoke-test.sh "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" "$RUNNER_TEMP/smoke-test" images
-
       - name: Test calls between two call clients
         run: scripts/ci/ios-sim/call-xctest.sh "$RUNNER_TEMP/DerivedData" "$RUNNER_TEMP/call-test/xctest"
 
+      # the tests after the call tests run whenever the app built: each checks something else
+      - name: Install AXe
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: scripts/ci/ios-sim/install-axe.sh
+
+      - name: Run smoke test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: scripts/ci/ios-sim/smoke-test.sh "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app" "$RUNNER_TEMP/smoke-test" images
+
       - name: Build the other ref's app
         id: other-app
-        if: env.CALLS == 'true'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && env.CALLS == 'true' }}
         run: scripts/ci/ios-sim/build-app.sh "$RUNNER_TEMP/DerivedData-other" "$CALLS_WITH"
 
       - name: Test calls between two of this branch's apps
-        if: env.CALLS == 'true'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && env.CALLS == 'true' }}
         run: |
-          xcrun simctl shutdown "$SIM_UDID"
+          if [ -n "${SIM_UDID:-}" ]; then xcrun simctl shutdown "$SIM_UDID" || true; fi
           app=$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SimpleX.app
           scripts/ci/ios-sim/call-test.sh "$app" "$app" "$RUNNER_TEMP/call-test/branch-branch"
 
