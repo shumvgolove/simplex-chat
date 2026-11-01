@@ -20,6 +20,10 @@ ui=$here/ui
 # shellcheck source=scripts/ci/ios-sim/sim-lib.sh
 . "$here/sim-lib.sh"
 call_seconds=20
+# The call screen's buttons are not in the accessibility tree: the red end call button is tapped where it is drawn, at
+# the bottom centre of the 402 x 874 point screen.
+end_call_x=201
+end_call_y=794
 # the middle of the screen in screenshot pixels (402 x 874 points at 3x): the peer's video, clear of the own video,
 # the call state at the top and the buttons at the bottom
 frame_region="300 1000 600 600"
@@ -143,6 +147,14 @@ expect_call() {
   on "$peer" shot "$2-connected"
 }
 
+call_ended() {
+  local deadline=$((SECONDS + 60))
+  while on "$1" tree | grep -qE '^StaticText "connected"'; do
+    [ "$SECONDS" -lt "$deadline" ] || return 1
+    sleep 3
+  done
+}
+
 # the peer's video: a saturated color, different in two screenshots a few seconds apart
 frame_color() {
   local peer=$1 shot
@@ -180,12 +192,19 @@ media_count() {
     awk -v f="$field" '{n = (f == "packets") ? $7 : $9; if (n > max) max = n} END {print max + 0}'
 }
 
+# the codecs of this direction and kind, such as "video/VP8"
+media_codecs() {
+  tail -n +"$3" "$out/$1/app.log" | grep -oE "call media stats: $2 packets [0-9]+ frames [0-9]+ codec [^ ]+" |
+    awk '$NF != "none" {print $NF}' | sort -u | tr '\n' ' '
+}
+
 check_media() {
   local peer=$1 call=$2 from=$3 audio video sent
   audio=$(media_count "$peer" "inbound-rtp audio" "$from" packets)
   video=$(media_count "$peer" "inbound-rtp video" "$from" frames)
   sent=$(media_count "$peer" "outbound-rtp video" "$from" frames)
   echo "$call: $peer received $audio audio packets, decoded $video video frames, encoded $sent video frames"
+  echo "$call: $peer's codecs: received $(media_codecs "$peer" "inbound-rtp video" "$from")$(media_codecs "$peer" "inbound-rtp audio" "$from"), sent $(media_codecs "$peer" "outbound-rtp video" "$from")$(media_codecs "$peer" "outbound-rtp audio" "$from")"
   [ "$audio" -gt 0 ] || fail "$call: $peer received no audio"
   [ "$video" -gt 0 ] || fail "$call: $peer decoded no video"
 }
@@ -208,10 +227,9 @@ video_call() {
   report_screen "$callee" "$call"
   check_media "$caller" "$call" "$caller_from"
   check_media "$callee" "$call" "$callee_from"
-  # the call's buttons may carry their label on the image inside, as the chat's "Call" menu does
-  tap_button "$caller" "End [Cc]all|phone.down.fill|End|Hang up" 10 "Button|Image" || fail "$call: no button to end the call"
-  on "$callee" wait "Accept" 1 > /dev/null 2>&1 || true
-  sleep 5
+  on "$caller" tap-xy "$end_call_x" "$end_call_y"
+  call_ended "$caller" || fail "$call: $caller's call did not end"
+  call_ended "$callee" || fail "$call: $callee's call did not end when $caller ended it"
   on "$caller" shot "$call-ended"
   on "$callee" shot "$call-ended"
   echo "$call: connected, e2e encrypted, audio and video both ways"
