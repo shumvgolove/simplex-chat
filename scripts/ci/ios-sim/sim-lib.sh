@@ -47,27 +47,39 @@ allow_notifications() {
   echo "no notifications alert to allow"
 }
 
+# Runs a ui command up to 3 times: AXe sometimes fails on a simulator that is still settling, such as with "No translation
+# object returned for simulator" (run 41256820483).
+ui_retry() {
+  local attempt
+  for attempt in 1 2; do
+    "$ui" "$@" && return
+    echo "retrying: ui $*"
+    sleep 5
+  done
+  "$ui" "$@"
+}
+
 # From the app's first screen to the chat list, creating the profile $1; shot names start with $2.
 # Waits are long: a runner with two simulators read no accessibility tree for over 30 s (runs 41229483743, 41248278756).
 onboard() {
   local name=$1 prefix=${2:-}
   "$ui" wait "Get started" 180
   "$ui" shot "${prefix}first-screen"
-  "$ui" tap "Get started" 60
+  ui_retry tap "Get started" 60
 
   "$ui" wait "Create profile" 90
-  "$ui" tap-value "Enter profile name..." 60
+  ui_retry tap-value "Enter profile name..." 60
   "$ui" type "$name"
   "$ui" shot "${prefix}profile-name"
-  "$ui" tap "Create profile" 60
+  ui_retry tap "Create profile" 60
 
   "$ui" wait "Continue" 90
   "$ui" shot "${prefix}your-network"
-  "$ui" tap "Continue" 60
+  ui_retry tap "Continue" 60
 
   "$ui" wait "Accept" 90
   "$ui" shot "${prefix}network-commitments"
-  "$ui" tap "Accept" 60
+  ui_retry tap "Accept" 60
 
   sleep 5
   "$ui" shot "${prefix}after-onboarding"
