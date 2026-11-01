@@ -78,9 +78,17 @@ final class CallTests: XCTestCase {
             XCTAssertGreaterThan(frames.decrypted, 0, "\(peer.name) decrypted no frames")
             XCTAssertEqual(frames.errors, 0, "\(peer.name)'s frame encryption errors")
         }
-        // Ending the calls hung with two clients in one process (run 41295737388), and releasing a client closes its
-        // connection too, so both stay alive until the process exits. The UI call test ends calls, one client per app.
+        // Releasing a client would close its connection as ending the call does, so both stay alive until the process exits.
         Self.clients += [caller, callee]
+
+        // The caller ends its call, as the app does when its user hangs up. Ending it hung (runs 41295737388,
+        // 41311546712): the crash report of this abort has the stacks of all threads, to show where it stopped.
+        Task.detached { await caller.client.sendCallCommand(command: .end) }
+        do {
+            try await waitUntil("the caller's call ends", seconds: 30) { caller.client.activeCall == nil }
+        } catch CallTestError.timeout {
+            abort()
+        }
     }
 
     // 32 random bytes in base64url, the media key the chat core makes for a call

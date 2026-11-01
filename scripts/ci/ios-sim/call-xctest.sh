@@ -35,7 +35,18 @@ xcodebuild build-for-testing -quiet "${xcode[@]}"
 xcrun simctl install "$sim" "$derived/Build/Products/Debug-iphonesimulator/SimpleX.app"
 xcrun simctl privacy "$sim" grant microphone "$bundle_id"
 xcrun simctl privacy "$sim" grant camera "$bundle_id"
+touch "$out/started"
+status=0
 # a hung test fails after 10 minutes, rather than with the job's limit (run 41295737388)
 xcodebuild test-without-building -resultBundlePath "$out/CallTests.xcresult" \
   -test-timeouts-enabled YES -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 600 \
-  "${xcode[@]}"
+  "${xcode[@]}" || status=$?
+
+# the test aborts the app when ending a call hangs: its crash report has every thread's stack
+find ~/Library/Logs/DiagnosticReports -name 'SimpleX*' -newer "$out/started" 2> /dev/null | while read -r report; do
+  cp "$report" "$out/"
+  echo "::group::crash report $report"
+  cat "$report"
+  echo "::endgroup::"
+done
+exit "$status"
