@@ -8,11 +8,11 @@ import SwiftUI
 final class CallTests: XCTestCase {
     private static let mediaTimeout: Double = 180
     private static let videoFrames: Int64 = 30
-    private static let audioPackets: Int64 = 100
 
     override func setUp() async throws {
-        // with CallKit off the clients enable audio themselves, as the app does without it
-        callKitEnabledGroupDefault.set(false)
+        // With CallKit, the app's default, WebRTC starts no audio until CallKit activates it, which it doesn't here: two
+        // clients starting audio in one simulator deadlocked CoreAudio (run 41291626987). The UI call test checks audio.
+        callKitEnabledGroupDefault.set(true)
         try await waitUntil("the app starts its chat core, which encrypts the frames", seconds: 60) { hasChatCtrl() }
         guard Bundle.main.path(forResource: "sounds/video", ofType: "mp4") != nil else {
             XCTFail("the simulator's camera plays sounds/video.mp4: make it with scripts/ci/ios-sim/test-video.swift")
@@ -57,7 +57,7 @@ final class CallTests: XCTestCase {
 
         for peer in [caller, callee] {
             try await waitUntil(
-                "\(peer.name) decodes \(Self.videoFrames) video frames and receives \(Self.audioPackets) audio packets",
+                "\(peer.name) decodes \(Self.videoFrames) video frames",
                 seconds: Self.mediaTimeout,
                 state: {
                     let stats = await peer.client.mediaStats()
@@ -65,7 +65,7 @@ final class CallTests: XCTestCase {
                 }
             ) {
                 guard let stats = await peer.client.mediaStats() else { return false }
-                return stats.videoFramesDecoded >= Self.videoFrames && stats.audioPacketsReceived >= Self.audioPackets
+                return stats.videoFramesDecoded >= Self.videoFrames
             }
             let currentStats = await peer.client.mediaStats()
             let stats = try XCTUnwrap(currentStats, "\(peer.name) has no call")
