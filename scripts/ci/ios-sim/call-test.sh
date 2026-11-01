@@ -4,8 +4,10 @@
 # connect with Alice's 1-time link, Alice calls Bob, then Bob calls Alice; the callee accepts in the app (CallKit off).
 # alice and bob can run different builds, such as the app with a new and with an old WebRTC.
 # Each app sends sounds/video.mp4 (test-video.swift) in place of the camera, a color that changes every half second.
-# A call passes when both screens show it connected and e2e encrypted, each shows the other's video in two
-# different colors a few seconds apart, and neither app log has a frame encryption or decryption error.
+# A call passes when both screens show it connected and e2e encrypted, each app received and decoded the other's
+# video and received its audio (the media stats a debug build logs), and neither app log has a frame encryption or
+# decryption error. Whether the screen draws the peer's video is reported, not checked: in run 41256820483 the
+# runner's simulators drew no video at all, not even the own camera's.
 # Usage: scripts/ci/ios-sim/call-test.sh <alice's SimpleX.app> <bob's SimpleX.app> <output dir>
 
 set -euo pipefail
@@ -157,22 +159,41 @@ saturated() {
   [ "$max" -ge 150 ] && [ $((max - min)) -ge 100 ]
 }
 
-check_video() {
-  local peer=$1 call=$2 first second
+report_screen() {
+  local peer=$1 call=$2 first second shown=no
   on "$peer" shot "$call-video-1"
   sleep 3
   on "$peer" shot "$call-video-2"
   first=$(frame_color "$peer" "$call-video-1")
   second=$(frame_color "$peer" "$call-video-2")
-  echo "$call: $peer sees the peer's video as rgb $first, then $second"
-  if ! saturated "$first" || ! saturated "$second"; then
-    fail "$call: $peer's call screen does not show the peer's video"
+  if saturated "$first" && saturated "$second" && [ "$first" != "$second" ]; then
+    shown=yes
   fi
-  [ "$first" != "$second" ] || fail "$call: the video $peer receives did not change"
+  echo "$call: $peer's screen shows the peer's video: $shown (rgb $first, then $second)"
+}
+
+# The largest count of the media stats lines for this direction and kind that the app logged after line $3 of its log,
+# such as "call media stats: inbound-rtp video packets 812 frames 301".
+media_count() {
+  local peer=$1 stat=$2 from=$3 field=$4
+  tail -n +"$from" "$out/$peer/app.log" | grep -oE "call media stats: $stat packets [0-9]+ frames [0-9]+" |
+    awk -v f="$field" '{n = (f == "packets") ? $7 : $9; if (n > max) max = n} END {print max + 0}'
+}
+
+check_media() {
+  local peer=$1 call=$2 from=$3 audio video sent
+  audio=$(media_count "$peer" "inbound-rtp audio" "$from" packets)
+  video=$(media_count "$peer" "inbound-rtp video" "$from" frames)
+  sent=$(media_count "$peer" "outbound-rtp video" "$from" frames)
+  echo "$call: $peer received $audio audio packets, decoded $video video frames, encoded $sent video frames"
+  [ "$audio" -gt 0 ] || fail "$call: $peer received no audio"
+  [ "$video" -gt 0 ] || fail "$call: $peer decoded no video"
 }
 
 video_call() {
-  local caller=$1 callee=$2 call="$1-calls-$2"
+  local caller=$1 callee=$2 call="$1-calls-$2" caller_from callee_from
+  caller_from=$(($(wc -l < "$out/$caller/app.log") + 1))
+  callee_from=$(($(wc -l < "$out/$callee/app.log") + 1))
   open_chat "$caller" "$callee"
   tap_button "$caller" Call 120 || fail "$caller's chat with $callee has no call button"
   on "$caller" tap "Video call" 10
@@ -183,15 +204,17 @@ video_call() {
   expect_call "$caller" "$call"
   expect_call "$callee" "$call"
   sleep "$call_seconds"
-  check_video "$caller" "$call"
-  check_video "$callee" "$call"
+  report_screen "$caller" "$call"
+  report_screen "$callee" "$call"
+  check_media "$caller" "$call" "$caller_from"
+  check_media "$callee" "$call" "$callee_from"
   # the call's buttons may carry their label on the image inside, as the chat's "Call" menu does
   tap_button "$caller" "End [Cc]all|phone.down.fill|End|Hang up" 10 "Button|Image" || fail "$call: no button to end the call"
   on "$callee" wait "Accept" 1 > /dev/null 2>&1 || true
   sleep 5
   on "$caller" shot "$call-ended"
   on "$callee" shot "$call-ended"
-  echo "$call: connected, e2e encrypted, video both ways"
+  echo "$call: connected, e2e encrypted, audio and video both ways"
 }
 
 # Alice's 1-time link, read from the tree, reaches Bob's clipboard; Bob opens it as a new chat and connects
@@ -229,4 +252,4 @@ for peer in "${peers[@]}"; do
   errors=$(grep -cE '(encrypt|decrypt) error' "$out/$peer/app.log" || true)
   [ "$errors" -eq 0 ] || fail "$peer: $errors frame encryption errors in the app log"
 done
-echo "call test passed: alice ($app_alice) and bob ($app_bob) called each other, e2e encrypted, with video both ways"
+echo "call test passed: alice ($app_alice) and bob ($app_bob) called each other, e2e encrypted, with audio and video both ways"
