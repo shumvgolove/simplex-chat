@@ -4,9 +4,8 @@
 # connect with Alice's 1-time link, Alice calls Bob, then Bob calls Alice; the callee accepts in the app (CallKit off).
 # alice and bob can run different builds, such as the app with a new and with an old WebRTC.
 # Each app sends sounds/video.mp4 (test-video.swift) in place of the camera, a color that changes every half second.
-# A call passes when both screens show it connected and e2e encrypted, each app received and decoded the other's
-# video and received its audio (the media stats a debug build logs), and neither app log has a frame encryption or
-# decryption error. Whether the screen draws the peer's video is reported, not checked: in run 41256820483 the
+# A call passes when both screens show it connected and e2e encrypted and, by the media stats a debug build logs, each
+# app decoded the other's VP8 video, received its audio, and encrypted and decrypted frames without errors. Whether the screen draws the peer's video is reported, not checked: in run 41256820483 the
 # runner's simulators drew no video at all, not even the own camera's.
 # Usage: scripts/ci/ios-sim/call-test.sh <alice's SimpleX.app> <bob's SimpleX.app> <output dir>
 
@@ -19,7 +18,10 @@ here=$(dirname "$0")
 ui=$here/ui
 # shellcheck source=scripts/ci/ios-sim/sim-lib.sh
 . "$here/sim-lib.sh"
-call_seconds=20
+# what each side must receive before the media checks, within media_timeout seconds (as CallTests.swift)
+video_frames=30
+audio_packets=100
+media_timeout=180
 # The call screen's buttons are not in the accessibility tree: the red end call button is tapped where it is drawn, at
 # the bottom centre of the 402 x 874 point screen.
 end_call_x=201
@@ -184,29 +186,40 @@ report_screen() {
   echo "$call: $peer's screen shows the peer's video: $shown (rgb $first, then $second)"
 }
 
-# The largest count of the media stats lines for this direction and kind that the app logged after line $3 of its log,
-# such as "call media stats: inbound-rtp video packets 812 frames 301".
-media_count() {
-  local peer=$1 stat=$2 from=$3 field=$4
-  tail -n +"$from" "$out/$peer/app.log" | grep -oE "call media stats: $stat packets [0-9]+ frames [0-9]+" |
-    awk -v f="$field" '{n = (f == "packets") ? $7 : $9; if (n > max) max = n} END {print max + 0}'
+# The app's last media stats line after line $2 of its log (WebRTCClient.logMediaStats), such as "audio packets
+# received 812, video frames decoded 301, encoded 290, frames encrypted 1102, decrypted 1093, crypto errors 0,
+# codecs audio/opus video/VP8".
+media_stats() {
+  tail -n +"$2" "$out/$1/app.log" | grep -oE "call media stats: .*" | tail -n 1 | sed 's/call media stats: //'
 }
 
-# the codecs of this direction and kind, such as "video/VP8"
-media_codecs() {
-  tail -n +"$3" "$out/$1/app.log" | grep -oE "call media stats: $2 packets [0-9]+ frames [0-9]+ codec [^ ]+" |
-    awk '$NF != "none" {print $NF}' | sort -u | tr '\n' ' '
+# a count from a media stats line, such as "video frames decoded"
+stat_count() {
+  grep -oE "$2 [0-9]+" <<< "$1" | grep -oE "[0-9]+$" || echo 0
+}
+
+wait_media() {
+  local peer=$1 from=$2 stats deadline=$((SECONDS + media_timeout))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    stats=$(media_stats "$peer" "$from")
+    if [ "$(stat_count "$stats" "video frames decoded")" -ge "$video_frames" ] &&
+      [ "$(stat_count "$stats" "audio packets received")" -ge "$audio_packets" ]; then
+      return
+    fi
+    sleep 5
+  done
 }
 
 check_media() {
-  local peer=$1 call=$2 from=$3 audio video sent
-  audio=$(media_count "$peer" "inbound-rtp audio" "$from" packets)
-  video=$(media_count "$peer" "inbound-rtp video" "$from" frames)
-  sent=$(media_count "$peer" "outbound-rtp video" "$from" frames)
-  echo "$call: $peer received $audio audio packets, decoded $video video frames, encoded $sent video frames"
-  echo "$call: $peer's codecs: received $(media_codecs "$peer" "inbound-rtp video" "$from")$(media_codecs "$peer" "inbound-rtp audio" "$from"), sent $(media_codecs "$peer" "outbound-rtp video" "$from")$(media_codecs "$peer" "outbound-rtp audio" "$from")"
-  [ "$audio" -gt 0 ] || fail "$call: $peer received no audio"
-  [ "$video" -gt 0 ] || fail "$call: $peer decoded no video"
+  local peer=$1 call=$2 from=$3 stats
+  stats=$(media_stats "$peer" "$from")
+  echo "$call: $peer's media: ${stats:-no stats logged}"
+  [ "$(stat_count "$stats" "audio packets received")" -gt 0 ] || fail "$call: $peer received no audio"
+  [ "$(stat_count "$stats" "video frames decoded")" -gt 0 ] || fail "$call: $peer decoded no video"
+  [ "$(stat_count "$stats" "frames encrypted")" -gt 0 ] || fail "$call: $peer encrypted no frames"
+  [ "$(stat_count "$stats" "decrypted")" -gt 0 ] || fail "$call: $peer decrypted no frames"
+  [ "$(stat_count "$stats" "crypto errors")" -eq 0 ] || fail "$call: $peer had frame encryption errors"
+  grep -qE "codecs .*video/VP8" <<< "$stats" || fail "$call: $peer's video is not VP8"
 }
 
 video_call() {
@@ -222,7 +235,8 @@ video_call() {
   on "$callee" tap Accept
   expect_call "$caller" "$call"
   expect_call "$callee" "$call"
-  sleep "$call_seconds"
+  wait_media "$caller" "$caller_from"
+  wait_media "$callee" "$callee_from"
   report_screen "$caller" "$call"
   report_screen "$callee" "$call"
   check_media "$caller" "$call" "$caller_from"
@@ -266,8 +280,4 @@ on alice shot invitation-closed
 video_call alice bob
 video_call bob alice
 
-for peer in "${peers[@]}"; do
-  errors=$(grep -cE '(encrypt|decrypt) error' "$out/$peer/app.log" || true)
-  [ "$errors" -eq 0 ] || fail "$peer: $errors frame encryption errors in the app log"
-done
 echo "call test passed: alice ($app_alice) and bob ($app_bob) called each other, e2e encrypted, with audio and video both ways"
