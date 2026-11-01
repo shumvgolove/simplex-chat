@@ -149,12 +149,47 @@ expect_call() {
   on "$peer" shot "$2-connected"
 }
 
+# The call screen covers the chat, whose tree stays readable under it: the call ended when the chat's composer is in
+# the tree and the call's state is not. An unreadable tree is not an ended call (run 41311546712).
 call_ended() {
-  local deadline=$((SECONDS + 60))
-  while on "$1" tree | grep -qE '^StaticText "connected"'; do
-    [ "$SECONDS" -lt "$deadline" ] || return 1
+  local deadline=$((SECONDS + 60)) tree
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    tree=$(on "$1" tree || true)
+    if grep -qF 'Button "Attachements"' <<< "$tree" && ! grep -qE '^StaticText "connected"' <<< "$tree"; then
+      return
+    fi
     sleep 3
   done
+  return 1
+}
+
+# Saves the stacks of the app's threads, for a call that does not end: in run 41311546712 the app that ended a call
+# froze, its main thread logging nothing after WebRTCClient's "ending the call".
+sample_app() {
+  local peer=$1 pid
+  pid=$(pgrep -f "$(get udid "$peer")/.*/SimpleX.app/SimpleX$" | head -n 1 || true)
+  if [ -z "$pid" ]; then
+    echo "$peer's app is not running"
+    return
+  fi
+  sample "$pid" 5 -file "$out/$peer/hang-sample.txt" > /dev/null 2>&1 || true
+  echo "::group::$peer's app threads while its call did not end ($out/$peer/hang-sample.txt)"
+  cat "$out/$peer/hang-sample.txt" || true
+  echo "::endgroup::"
+}
+
+# The peer ends its call; the other app ends it when the chat delivers the end.
+end_call() {
+  local peer=$1 other=$2 call=$3
+  on "$peer" tap-xy "$end_call_x" "$end_call_y"
+  if ! call_ended "$peer"; then
+    sample_app "$peer"
+    fail "$call: $peer's call did not end when $peer ended it"
+  fi
+  if ! call_ended "$other"; then
+    sample_app "$other"
+    fail "$call: $other's call did not end when $peer ended it"
+  fi
 }
 
 # the peer's video: a saturated color, different in two screenshots a few seconds apart
@@ -241,9 +276,8 @@ video_call() {
   report_screen "$callee" "$call"
   check_media "$caller" "$call" "$caller_from"
   check_media "$callee" "$call" "$callee_from"
-  on "$caller" tap-xy "$end_call_x" "$end_call_y"
-  call_ended "$caller" || fail "$call: $caller's call did not end"
-  call_ended "$callee" || fail "$call: $callee's call did not end when $caller ended it"
+  # the callee ends the call, so each app of a test ends one of its two calls
+  end_call "$callee" "$caller" "$call"
   on "$caller" shot "$call-ended"
   on "$callee" shot "$call-ended"
   echo "$call: connected, e2e encrypted, audio and video both ways"
