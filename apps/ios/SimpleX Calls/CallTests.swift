@@ -24,8 +24,6 @@ final class CallTests: XCTestCase {
         let key = Self.mediaKey()
         let caller = CallPeer("caller")
         let callee = CallPeer("callee")
-        await caller.responses.relayIce(to: callee.client)
-        await callee.responses.relayIce(to: caller.client)
 
         // the caller's invitation carries its capabilities; the callee starts WebRTC and makes the offer
         await caller.client.sendCallCommand(command: .capabilities(media: .video))
@@ -42,12 +40,14 @@ final class CallTests: XCTestCase {
         }
 
         await caller.client.sendCallCommand(command: .offer(offer: offer, iceCandidates: offerIce, media: .video, aesKey: key, iceServers: [], relay: false))
+        await callee.responses.relayIce(to: caller.client)
         let (answer, answerIce): (String, String) = try await caller.response("answer") {
             if case let .answer(answer, iceCandidates) = $0 { return (answer, iceCandidates) }
             return nil
         }
 
         await callee.client.sendCallCommand(command: .answer(answer: answer, iceCandidates: answerIce))
+        await caller.responses.relayIce(to: callee.client)
         for peer in [caller, callee] {
             let _: Bool = try await peer.response("connected") {
                 if case .connected = $0 { return true }
@@ -115,7 +115,7 @@ private final class CallPeer {
         client = WebRTCClient({ message in await responses.add(message.resp) }, .constant(nil))
     }
 
-    func response<T>(_ type: String, _ match: @escaping (WCallResponse) -> T?) async throws -> T {
+    func response<T>(_ type: String, _ match: (WCallResponse) -> T?) async throws -> T {
         var result: T?
         try await waitUntil("\(name) responds with \(type)", seconds: 30) {
             let error: String? = await responses.first {
@@ -137,9 +137,13 @@ private actor Responses {
     private var all: [WCallResponse] = []
     private var relay: ((String) async -> Void)?
 
-    // the ICE candidates gathered after the offer and the answer go to the other client, as the chat sends them
-    func relayIce(to peer: WebRTCClient) {
+    // The ICE candidates gathered after the offer or the answer go to the other client once it has the call, as the chat
+    // delivers them after the offer and the answer: a client without the call responds with an error.
+    func relayIce(to peer: WebRTCClient) async {
         relay = { candidates in await peer.sendCallCommand(command: .ice(iceCandidates: candidates)) }
+        for case let .ice(candidates, nil) in all {
+            await relay?(candidates)
+        }
     }
 
     func add(_ response: WCallResponse) async {
