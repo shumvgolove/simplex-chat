@@ -8,7 +8,6 @@ import SwiftUI
 final class CallTests: XCTestCase {
     private static let mediaTimeout: Double = 180
     private static let videoFrames: Int64 = 30
-    private static var clients: [CallPeer] = []
 
     override func setUp() async throws {
         // With CallKit, the app's default, WebRTC starts no audio until CallKit activates it, which it doesn't here: two
@@ -78,17 +77,28 @@ final class CallTests: XCTestCase {
             XCTAssertGreaterThan(frames.decrypted, 0, "\(peer.name) decrypted no frames")
             XCTAssertEqual(frames.errors, 0, "\(peer.name)'s frame encryption errors")
         }
-        // Releasing a client would close its connection as ending the call does, so both stay alive until the process exits.
-        Self.clients += [caller, callee]
+        for peer in [caller, callee] {
+            try await endCall(peer)
+        }
+    }
 
-        // The caller ends its call, as the app does when its user hangs up. Ending it hung (runs 41295737388,
-        // 41311546712): the crash report of this abort has the stacks of all threads, to show where it stopped.
-        Task.detached { await caller.client.sendCallCommand(command: .end) }
+    // The app ends a call twice at once: the end command, and the call view on disappearing on the main thread. Both
+    // closed the connection, which froze the app (CI run 41311546712). A hang aborts the app, whose crash report has
+    // the stacks of all threads.
+    private func endCall(_ peer: CallPeer) async throws {
+        let ended = Flag()
+        Task.detached {
+            async let command: Void = peer.client.sendCallCommand(command: .end)
+            async let view: Void = MainActor.run { peer.client.endCall() }
+            _ = await (command, view)
+            await ended.set()
+        }
         do {
-            try await waitUntil("the caller's call ends", seconds: 30) { caller.client.activeCall == nil }
+            try await waitUntil("\(peer.name) ends its call twice at once", seconds: 30) { await ended.isSet }
         } catch CallTestError.timeout {
             abort()
         }
+        XCTAssertNil(peer.client.activeCall, "\(peer.name)'s call did not end")
     }
 
     // 32 random bytes in base64url, the media key the chat core makes for a call
@@ -147,6 +157,14 @@ private final class CallPeer {
             return result != nil
         }
         return try XCTUnwrap(result, "\(name) did not respond with \(type)")
+    }
+}
+
+private actor Flag {
+    private(set) var isSet = false
+
+    func set() {
+        isSet = true
     }
 }
 
