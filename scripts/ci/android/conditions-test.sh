@@ -182,7 +182,8 @@ step() {
     process="restarted ($before -> $after)"
   fi
   observed=$(observe)
-  "$ui" shot "$variant-$name-$observed" > /dev/null
+  # shot names have no "+"
+  "$ui" shot "$variant-$name-${observed/+/-}" > /dev/null
   if [ "$observed" = conditions ]; then
     deadline=$(deadline_shown)
   fi
