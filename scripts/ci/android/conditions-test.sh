@@ -37,7 +37,20 @@ launch() {
   local activity
   activity=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$package" | tail -n 1)
   adb shell am start -W -n "$activity" > /dev/null
-  "$ui" wait "$chat_list" 90
+  wait_screen 90
+}
+
+# the chat list, or a notice, which covers it
+wait_screen() {
+  local deadline=$((SECONDS + $1))
+  until "$ui" find "$chat_list" > /dev/null 2>&1 || "$ui" find "New in" > /dev/null 2>&1 || "$ui" find "Accept conditions" > /dev/null 2>&1; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      "$ui" shot no-chat-list > /dev/null
+      echo "error: neither the chat list nor a notice $1 s after the start"
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 app_pid() {
@@ -65,7 +78,7 @@ rotate() {
   adb shell settings put system accelerometer_rotation 0
   adb shell settings put system user_rotation "$1"
   sleep 3
-  "$ui" wait "$chat_list" 30
+  wait_screen 30
 }
 
 # swipes up in the middle of the screen, in its current orientation
