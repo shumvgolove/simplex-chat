@@ -138,7 +138,12 @@ close_notice() {
       ;;
     conditions) "$ui" key BACK ;;
   esac
-  "$ui" wait "$chat_list" 15
+  if ! "$ui" wait "$chat_list" 30; then
+    "$ui" shot close-failed
+    adb shell wm dismiss-keyguard
+    "$ui" key BACK
+    "$ui" wait "$chat_list" 30 || fail "no chat list after closing the notice"
+  fi
   # the notice is closed, not replaced by another one
   sleep 2
   if "$ui" find "New in" > /dev/null 2>&1 || "$ui" find "Accept conditions" > /dev/null 2>&1; then
