@@ -12,6 +12,7 @@ TYPES = {
     "NetworkSMPProxyMode": "string",
     "LogLevel": "string",
     "WhatsNewVersion": "string",
+    "PerformLA": "boolean",
 }
 
 

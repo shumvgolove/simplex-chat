@@ -26,6 +26,7 @@ chat_list="Start new chat"
 observe_secs=12
 seen_version=v7.1
 old_version=v6.5
+pin=1234
 results=$UI_OUT/results.md
 failed=0
 
@@ -220,7 +221,28 @@ open_console() {
   "$ui" click-text "$name ($code)" 10
   "$ui" click-text "Developer tools" 10
   "$ui" click-text "Chat console" 10
-  "$ui" wait "Send Message" 5 > /dev/null 2>&1 || true
+  unlock_until "Send Message" || fail "no chat console after the app lock"
+}
+
+# Unlocks the app lock's prompt with the emulator's PIN until one of the texts is on screen.
+unlock_until() {
+  local deadline=$((SECONDS + 60)) text
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    for text in "$@"; do
+      "$ui" find "$text" > /dev/null 2>&1 && return 0
+    done
+    if "$ui" find "Enter your PIN" > /dev/null 2>&1 || ! adb shell dumpsys window | grep -q "mCurrentFocus=.*$package"; then
+      adb shell input text "$pin"
+      adb shell input keyevent KEYCODE_ENTER
+      log "entered the PIN"
+      sleep 2
+    elif "$ui" find "Unlock" > /dev/null 2>&1; then
+      "$ui" click-text "Unlock" 5 || true
+    fi
+    sleep 1
+  done
+  "$ui" shot locked > /dev/null
+  return 1
 }
 
 console_field() {
@@ -228,37 +250,72 @@ console_field() {
     awk '{ print $1 + int($3 / 2), $2 + int($4 / 2); exit }'
 }
 
+clear_field() {
+  adb shell input keyevent KEYCODE_MOVE_END
+  # shellcheck disable=SC2046
+  adb shell input keyevent $(printf 'KEYCODE_DEL %.0s' $(seq 100))
+}
+
 console_command() {
+  local x y attempt
+  for attempt in 1 2 3; do
+    read -r x y < <(console_field) || fail "no chat console field"
+    "$ui" click "$x" "$y"
+    clear_field
+    if "$ui" type "$1"; then
+      "$ui" click-text "Send Message" 10
+      sleep 3
+      return 0
+    fi
+    log "typing \"$1\" failed, attempt $attempt"
+  done
+  fail "could not type \"$1\" in the chat console"
+}
+
+# The chat console runs /sql only with the app lock on: the app is started with it, then stopped without it.
+console_start() {
+  local activity
+  "$ui" prefs PerformLA=true
+  activity=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$package" | tail -n 1)
+  adb shell am start -W -n "$activity" > /dev/null
+  unlock_until "$chat_list" "New in" "Accept conditions" || fail "the app is still locked"
+  close_notice "$(observe)"
+  open_console
+}
+
+# stopped: the next start, a step's, is the first with the new state
+console_stop() {
+  "$ui" prefs PerformLA=false
+}
+
+# the newest response in the console, the lowest "<" line
+open_last_response() {
   local x y
-  read -r x y < <(console_field) || fail "no chat console field"
+  read -r x y < <("$ui" text | awk '{ split($1, p, ","); if ($3 == "<" && p[2] + 0 > y + 0) { x = p[1]; y = p[2] } } END { if (y) print x, y }') || return 1
   "$ui" click "$x" "$y"
-  "$ui" type "$1"
-  "$ui" click-text "Send Message" 10
-  sleep 3
+  sleep 2
 }
 
 sql() {
   log "sql: $*"
-  open_console
+  console_start
   for statement in "$@"; do
     console_command "/sql chat $statement"
   done
   "$ui" shot "$variant-sql" > /dev/null
-  # stopped: the next start, a step's, is the first with the new state
-  adb shell am force-stop "$package"
+  console_stop
 }
 
 # notified_at of the conditions, the only row of a new user's usage_conditions
 check_notified() {
   local name=$1 expected=$2 observed
-  open_console
+  console_start
   console_command "/sql chat select 'NOTIFIED_'||count(notified_at) from usage_conditions"
-  "$ui" click-text "result" 10 || true
-  sleep 1
+  open_last_response || true
   "$ui" shot "$variant-$name" > /dev/null
   observed=$("$ui" text | grep -o 'NOTIFIED_[0-9]' | head -n 1 || true)
   record "$name" "/sql chat select" "NOTIFIED_$expected" "${observed:-unknown}" same -
-  adb shell am force-stop "$package"
+  console_stop
 }
 
 # stops the app: the next step starts it cold
@@ -269,6 +326,8 @@ prefs() {
 "$here/smoke-test.sh" "$apk" "$UI_OUT" onboarding
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 0
+# the app lock, which the chat console needs for /sql, asks for it
+adb shell locksettings set-pin "$pin"
 {
   echo "### Notices over the chat list: $variant"
   echo
