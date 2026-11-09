@@ -1,0 +1,188 @@
+name: conditions-test
+
+# Temporary: the notices over the Android chat list (What's new, updated conditions) with the branch and with master's
+# ChatListView.kt, in every state and after every way the chat list is shown again. Builds are reused by their sources:
+# the core when src/ is unchanged, the APKs when apps/multiplatform/ is also unchanged.
+
+on:
+  push:
+    branches: [sh/conditions-whats-new-test]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: conditions-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VER: 17
+  CORE_PKG: android-core-arm64-v8a.tar.gz
+  APK: android-foss-arm64-v8a-debug.apk
+  # the base of the pull request, whose ChatListView.kt the base APK has
+  BASE_SHA: ee7eb5987f9a9ac276a22539a292c2eb0696080b
+  CHANGED_FILE: apps/multiplatform/common/src/commonMain/kotlin/chat/simplex/common/views/chatlist/ChatListView.kt
+
+jobs:
+  plan:
+    name: find earlier builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      core: ${{ steps.names.outputs.core }}
+      core-run: ${{ steps.core.outputs.run-id }}
+      apks: ${{ steps.names.outputs.apks }}
+      apks-run: ${{ steps.apks.outputs.run-id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Artifact names
+        id: names
+        run: |
+          core="android-core-${{ hashFiles('src/**', 'cabal.project', 'simplex-chat.cabal', 'PRIVACY.md', 'flake.nix', 'flake.lock', 'scripts/nix/**', 'scripts/ci/android/build-core.sh') }}"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
+          echo "apks=condtest-apks-${{ hashFiles('apps/multiplatform/**', 'scripts/ci/android/install-core.sh') }}-${core#android-core-}" >> "$GITHUB_OUTPUT"
+
+      - name: Find core library
+        id: core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/desktop-linux/earlier-run.sh "${{ steps.names.outputs.core }}"
+
+      - name: Find APKs
+        id: apks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/desktop-linux/earlier-run.sh "${{ steps.names.outputs.apks }}"
+
+  core:
+    name: core library for Android arm64
+    needs: plan
+    if: needs.plan.outputs.core-run == '' && needs.plan.outputs.apks-run == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: tree:0
+
+      - name: Build core library
+        run: scripts/ci/android/build-core.sh ~/core/${{ env.CORE_PKG }}
+
+      - name: Upload core library
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.plan.outputs.core }}
+          path: ~/core/${{ env.CORE_PKG }}
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+
+  apks:
+    name: branch and base APKs
+    needs: [plan, core]
+    if: ${{ !cancelled() && !failure() && needs.plan.outputs.apks-run == '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          filter: tree:0
+
+      - name: Download core library
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.plan.outputs.core }}
+          path: ~/core
+          run-id: ${{ needs.plan.outputs.core-run || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Install core library
+        run: scripts/ci/android/install-core.sh ~/core/${{ env.CORE_PKG }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: corretto
+          java-version: ${{ env.JAVA_VER }}
+          cache: gradle
+          cache-dependency-path: |
+            apps/multiplatform/**/*.gradle.kts
+            apps/multiplatform/gradle.properties
+            apps/multiplatform/gradle/wrapper/gradle-wrapper.properties
+
+      # the base APK is the second, incremental build, with only ChatListView.kt as on the base
+      - name: Build APKs
+        working-directory: apps/multiplatform
+        run: |
+          mkdir -p "$RUNNER_TEMP/apks"
+          build() {
+            ./gradlew --console=plain -Psimplex.assets.dir=../../assets -Pandroid.injected.build.abi=arm64-v8a :android:assembleFossDebug
+            cp "android/build/intermediates/apk/foss/debug/$APK" "$RUNNER_TEMP/apks/$1.apk"
+          }
+          build pr
+          git -C ../.. checkout "$BASE_SHA" -- "$CHANGED_FILE"
+          git -C ../.. diff --stat HEAD
+          build base
+          ls -la "$RUNNER_TEMP/apks"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.plan.outputs.apks }}
+          path: ${{ runner.temp }}/apks
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+  test:
+    name: notices with the ${{ matrix.variant }} APK
+    needs: [plan, apks]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.apks.result == 'success' || needs.apks.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [pr, base]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libegl1
+
+      - name: Download APKs
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.plan.outputs.apks }}
+          path: ${{ runner.temp }}/apks
+          run-id: ${{ needs.plan.outputs.apks-run || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Install emulator and system image
+        run: scripts/ci/android/install-sdk.sh "$RUNNER_TEMP/android-sdk"
+
+      - name: Boot emulator
+        run: scripts/ci/android/emulator.sh start "$RUNNER_TEMP/out"
+
+      - name: Test notices
+        run: scripts/ci/android/conditions-test.sh "$RUNNER_TEMP/apks/${{ matrix.variant }}.apk" "$RUNNER_TEMP/out" ${{ matrix.variant }}
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: conditions-test-${{ matrix.variant }}
+          path: ${{ runner.temp }}/out
+          retention-days: 7
+          if-no-files-found: warn

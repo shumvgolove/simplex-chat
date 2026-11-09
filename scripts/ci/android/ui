@@ -21,6 +21,7 @@
 #   ui key <key>...               press keys by their Android names without KEYCODE_ (BACK, ENTER, DEL)
 #   ui layout <reachable|top>     restart the app with the reachable toolbar (the one-hand UI, the default) or the top bar
 #   ui relaunch                   restart the app and wait for the chat list
+#   ui prefs <setting>=<value>... stop the app and give a debug build the settings, as start does
 #   ui text-size <scale>          set the system font scale: 1 is the default, 1.3 and 2 are larger
 #   ui do <command> [args] -- <command> [args] ...
 #                                 run the commands in order, stopping at the first that fails
@@ -312,6 +313,11 @@ case "${1:-}" in
   relaunch)
     relaunch
     log "relaunch"
+    ;;
+  prefs)
+    shift
+    set_prefs "$@"
+    log "prefs $*"
     ;;
   text-size)
     number "$2"
